@@ -1,0 +1,50 @@
+# app.py (Flask Backend - Improved Version)
+from flask import Flask, request, jsonify
+import whois
+import re
+from functools import lru_cache
+
+app = Flask(__name__)
+
+# Regex for validating domain names
+def is_valid_domain(domain):
+    regex = re.compile(r'^(?!-)[A-Za-z0-9-]{1,63}(?<!-)$')
+    return regex.match(domain)
+
+# Caching domain availability check to improve performance
+@lru_cache(maxsize=100)
+def check_domain_availability(domain):
+    try:
+        whois.whois(domain)
+        return False  # Domain is taken
+    except whois.parser.PywhoisError:
+        return True  # Domain is available
+    except Exception as e:
+        # Handle unexpected exceptions gracefully
+        print(f"Unexpected error: {e}")
+        return False
+
+@app.route('/check_name', methods=['POST'])
+def check_name():
+    data = request.get_json()
+    company_name = data.get('name', '').strip()
+
+    if not company_name:
+        return jsonify({'error': 'No company name provided'}), 400
+
+    # Suggest domain extensions to check
+    domain_extensions = ['.com', '.net', '.org']
+    availability = {}
+
+    for ext in domain_extensions:
+        domain_name = re.sub(r'[^a-zA-Z0-9-]', '', company_name.replace(' ', '').lower()) + ext
+        if is_valid_domain(domain_name):
+            availability[domain_name] = check_domain_availability(domain_name)
+        else:
+            availability[domain_name] = False
+
+    return jsonify({'availability': availability})
+
+if __name__ == '__main__':
+    # Set debug to False for production use
+    app.run(debug=False)
